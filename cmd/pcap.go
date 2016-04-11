@@ -6,7 +6,6 @@ import (
 	"time"
 
 	cli "github.com/jawher/mow.cli"
-	"github.com/gocql/gocql"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -16,19 +15,13 @@ const (
 	pcapInsertStmt = "INSERT INTO netbrane_pcap_core.packets_by_time(time_bucket, capture_host, timestamp, packet_size, source_mac, destination_mac, ip_protocol, source_ip, destination_ip, ip_flags, source_port, destination_port, tcp_flags, tcp_window_size, tcp_sequence, tcp_acknowledgement) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
 
-func WritePCAP(cmd *cli.Cmd) {
-	cmd.Spec = "[-t] CAPTURE_HOST FILENAME..."
-	timeBucketSize := int64(*cmd.IntOpt("t time_bucket", 600, "Number of seconds in a time bucket"))
+func WritePCAPProtobuf(cmd *cli.Cmd) {
+	cmd.Spec = "CAPTURE_HOST OUTPUT_FILE FILENAME..."
 	captureHostname := cmd.StringArg("CAPTURE_HOST", "", "Host the packets were captured from")
 	filenames := cmd.StringsArg("FILENAME", nil, "Pcap files to write")
 
 	cmd.Action = func() {
-		//connect to cassandra
-		cqlSession, err := OpenCassandraSession()
-		if err != nil {
-			panic(err)
-		}
-
+		//TODO open outut file
 		for _, filename := range *filenames {
 			fmt.Printf("working on pcap file '%s'\n", filename)
 
@@ -133,8 +126,21 @@ func WritePCAP(cmd *cli.Cmd) {
 					fmt.Printf("TRANSPORT LAYER: %s\n", transportLayer.LayerType())
 				}
 
+				fmt.Printf("captureHost:%s\nsrcMAC%s\ndstMAC:%s\nipProtocol:%d\nsrcIP:%s\ndstIP:%s\nipFlags:%d\nsrcPort:%d\ndstPort:%d\nwindowSize:%d\nseq:%d\nack:%d\n",
+					*captureHostname,
+					srcMAC.String(),
+					dstMAC.String(),
+					ipProtocol,
+					srcIP,
+					dstIP,
+					ipFlags,
+					srcPort,
+					dstPort,
+					windowSize,
+					sequence,
+					acknowledgement)
 				//TODO  vlan, TCPFlags
-				err = cqlSession.Query(pcapInsertStmt,
+				/*err = cqlSession.Query(pcapInsertStmt,
 						time.Unix(packet.Metadata().Timestamp.Unix() - (packet.Metadata().Timestamp.Unix() % timeBucketSize), 0),
 						*captureHostname,
 						gocql.UUIDFromTime(packet.Metadata().Timestamp),
@@ -155,7 +161,7 @@ func WritePCAP(cmd *cli.Cmd) {
 
 				if err != nil {
 					fmt.Printf("%s\n", err)
-				}
+				}*/
 
 				packetCount++
 				if packetCount % 2500 == 0 {
