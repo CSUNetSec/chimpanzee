@@ -1,6 +1,6 @@
-CREATE KEYSPACE netbrane_pcap_core...
+CREATE KEYSPACE netbrane_pcap_core WITH replication = {'class': 'NetworkTopologyStrategy', 'csu_dc': 2};
 
-CREATE TABLE netbrane_pcap_core {
+CREATE TABLE netbrane_pcap_core.packets_by_time (
 	time_bucket timestamp,
 	capture_host text,
 	timestamp timeuuid,
@@ -15,8 +15,7 @@ CREATE TABLE netbrane_pcap_core {
 	destination_port int,
 	tcp_flags text,
 	tcp_window_size int,
-	tcp_sequence int,
-	tcp_ack int,
+	tcp_sequence bigint,
+	tcp_acknowledgement bigint,
 	PRIMARY KEY ((time_bucket, capture_host), timestamp)
-} WITH CLUSTERING ORDER BY (timestamp DESC);
-
+) WITH CLUSTERING ORDER BY (timestamp DESC);

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	cli "github.com/jawher/mow.cli"
+	"github.com/gocql/gocql"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -13,13 +15,17 @@ import (
 
 // ./chimpanzee -uusername -ppassword -h1.2.3.4 -h1.2.3.5 pcap 1.pcap 2.pcap 3.pcap
 
+const (
+	pcapInsertStmt = "INSERT INTO netbrane_pcap_core.packets_by_time(time_bucket, capture_host, timestamp, packet_size, source_mac, destination_mac, ip_protocol, source_ip, destination_ip, ip_flags, source_port, destination_port, tcp_flags, tcp_window_size, tcp_sequence, tcp_acknowledgement) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+)
+
 func main() {
 	chimpanzee := cli.App("chimpanzee", "Write data to netbrane defined cassandra tables")
 	chimpanzee.Version("v version", "0.0.1")
 
 	cassandraUsername := chimpanzee.StringOpt("u username", "", "Cassandra username")
 	cassandraPassword := chimpanzee.StringOpt("p password", "", "Cassandra password")
-	cassandraHosts := chimpanzee.StringsOpt("h host", nil, "Cassandra host IPs")
+	cassandraHosts := chimpanzee.StringsOpt("c cassandra_host", nil, "Cassandra host IPs")
 
 	//process pcap files
 	chimpanzee.Command("pcap", "Write a pcap file", func(cmd *cli.Cmd) {
@@ -27,6 +33,19 @@ func main() {
 		filenames := cmd.StringsArg("FILENAME", nil, "pcap files to write")
 
 		cmd.Action = func() {
+			//connect to cassandra
+			cluster := gocql.NewCluster(*cassandraHosts...)
+			cluster.Consistency = gocql.LocalOne
+			cluster.ProtoVersion = 4
+			cluster.RetryPolicy = &gocql.SimpleRetryPolicy{10}
+			cluster.Authenticator = gocql.PasswordAuthenticator{Username: *cassandraUsername, Password: *cassandraPassword}
+			cluster.NumConns = 16
+
+			cqlSession, err := cluster.CreateSession()
+			if err != nil {
+				panic(err)
+			}
+
 			for _, filename := range *filenames {
 				fmt.Printf("writing pcap file '%s' to '%v' username:%s password:%s\n", filename, *cassandraHosts, *cassandraUsername, *cassandraPassword)
 
@@ -39,9 +58,8 @@ func main() {
 
 				defer handle.Close()
 
-				//loop through pcap packets
+				//declare packet variables
 				var (
-					packetLength uint16
 					srcMAC, dstMAC *net.HardwareAddr
 					ipProtocol int
 					srcIP, dstIP *net.IP
@@ -50,24 +68,35 @@ func main() {
 					sequence, acknowledgement uint32
 					windowSize uint16
 				)
+
+				//loop through pcap packets
 				packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 				for packet := range packetSource.Packets() {
 					//parse link layer
 					linkLayer := packet.LinkLayer()
+					if linkLayer == nil {
+						fmt.Printf("No link layer information, skipping packet\n")
+						continue
+					}
+
 					switch linkLayer.(type) {
 					case *layers.Ethernet:
 						ethernetLayer, _ := linkLayer.(*layers.Ethernet)
-						packetLength = ethernetLayer.Length
 						srcMAC = &ethernetLayer.SrcMAC
 						dstMAC = &ethernetLayer.DstMAC
 					default:
 						srcMAC = nil
 						dstMAC = nil
-						fmt.Printf("LINK LAYER: %s", linkLayer.LayerType())
+						fmt.Printf("LINK LAYER: %s\n", linkLayer.LayerType())
 					}
 
 					//parse network layer
 					networkLayer := packet.NetworkLayer()
+					if networkLayer == nil {
+						fmt.Printf("No network layer Information, skipping packet\n")
+						continue
+					}
+
 					switch networkLayer.(type) {
 					case *layers.IPv4:
 						ipv4Layer, _ := networkLayer.(*layers.IPv4)
@@ -84,11 +113,16 @@ func main() {
 					default:
 						srcIP = nil
 						dstIP = nil
-						fmt.Printf("NETWORK LAYER: %s", networkLayer.LayerType())
+						fmt.Printf("NETWORK LAYER: %s\n", networkLayer.LayerType())
 					}
 
 					//parse transport layer
 					transportLayer := packet.TransportLayer()
+					if transportLayer == nil {
+						fmt.Printf("No transport layer information, skipping packet\n")
+						continue
+					}
+
 					switch transportLayer.(type) {
 					case *layers.TCP:
 						tcpLayer, _ := transportLayer.(*layers.TCP)
@@ -110,14 +144,32 @@ func main() {
 						sequence = 0
 						acknowledgement = 0
 						windowSize = 0
-						fmt.Printf("TRANSPORT LAYER: %s", transportLayer.LayerType())
+						fmt.Printf("TRANSPORT LAYER: %s\n", transportLayer.LayerType())
 					}
 
 					//TODO  vlan, TCPFlags
-					fmt.Printf("Length:%d SrcMac:%s DestMac:%s\n", packetLength, srcMAC, dstMAC)
-					fmt.Printf("IPProto:%d SrcIP:%s DestIP:%s Flags:%d\n", ipProtocol, srcIP, dstIP, ipFlags)
-					fmt.Printf("SrcPort:%d DstPort:%d seq:%d, ack:%d, window:%d\n", srcPort, dstPort, sequence, acknowledgement, windowSize)
-					fmt.Println()
+					err = cqlSession.Query(pcapInsertStmt,
+							time.Now(),      //TODO time_bucket timestamp,
+							"test",          //TODO capture_host text,
+							gocql.UUIDFromTime(packet.Metadata().Timestamp),
+							packet.Metadata().Length,
+							srcMAC.String(),
+							dstMAC.String(),
+							ipProtocol,
+							srcIP,
+							dstIP,
+							ipFlags,
+							srcPort,
+							dstPort,
+							"", //TODO tcp_flags text,
+							windowSize,
+							sequence,
+							acknowledgement,
+						).Exec()
+
+					if err != nil {
+						fmt.Printf("%s\n", err)
+					}
 				}
 			}
 		}
