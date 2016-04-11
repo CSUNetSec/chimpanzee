@@ -1,7 +1,7 @@
 all: build
 
 chimpanzee: 
-	go build -o chimpanzee cmd/main.go
+	go build -o chimpanzee cmd/*
 
 build: chimpanzee
 
