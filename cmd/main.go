@@ -29,8 +29,10 @@ func main() {
 
 	//process pcap files
 	chimpanzee.Command("pcap", "Write a pcap file", func(cmd *cli.Cmd) {
-		cmd.Spec = "FILENAME..."
-		filenames := cmd.StringsArg("FILENAME", nil, "pcap files to write")
+		cmd.Spec = "[-t] CAPTURE_HOST FILENAME..."
+		timeBucketSize := int64(*cmd.IntOpt("t time_bucket", 600, "Number of seconds in a time bucket"))
+		captureHostname := cmd.StringArg("CAPTURE_HOST", "", "Host the packets were captured from")
+		filenames := cmd.StringsArg("FILENAME", nil, "Pcap files to write")
 
 		cmd.Action = func() {
 			//connect to cassandra
@@ -47,6 +49,7 @@ func main() {
 			}
 
 			for _, filename := range *filenames {
+				startTime := time.Now()
 				fmt.Printf("writing pcap file '%s' to '%v' username:%s password:%s\n", filename, *cassandraHosts, *cassandraUsername, *cassandraPassword)
 
 				//open pcap file
@@ -149,8 +152,8 @@ func main() {
 
 					//TODO  vlan, TCPFlags
 					err = cqlSession.Query(pcapInsertStmt,
-							time.Now(),      //TODO time_bucket timestamp,
-							"test",          //TODO capture_host text,
+							time.Unix(packet.Metadata().Timestamp.Unix() - (packet.Metadata().Timestamp.Unix() % timeBucketSize), 0),
+							*captureHostname,
 							gocql.UUIDFromTime(packet.Metadata().Timestamp),
 							packet.Metadata().Length,
 							srcMAC.String(),
@@ -171,6 +174,8 @@ func main() {
 						fmt.Printf("%s\n", err)
 					}
 				}
+
+				fmt.Printf("duration: %v\n", time.Since(startTime))
 			}
 		}
 	})
