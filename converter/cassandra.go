@@ -1,4 +1,4 @@
-package main
+package converter
 
 import (
 	"os"
@@ -6,6 +6,10 @@ import (
 	cli "github.com/jawher/mow.cli"
 	"github.com/gocql/gocql"
 	pb "github.com/CSUNetSec/netbrane_proto/nofutz_FlowMinder"
+)
+
+const (
+	pcapInsertStmt = "INSERT INTO netbrane_pcap_core.packets_by_time(time_bucket, capture_host, timestamp, packet_size, source_mac, destination_mac, ip_protocol, source_ip, destination_ip, ip_flags, source_port, destination_port, tcp_flags, tcp_window_size, tcp_sequence, tcp_acknowledgement) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
 
 var timeBucketSize *int

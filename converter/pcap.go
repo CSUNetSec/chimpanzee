@@ -1,4 +1,4 @@
-package main
+package converter
 
 import (
 	"fmt"
@@ -11,14 +11,11 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-const (
-	pcapInsertStmt = "INSERT INTO netbrane_pcap_core.packets_by_time(time_bucket, capture_host, timestamp, packet_size, source_mac, destination_mac, ip_protocol, source_ip, destination_ip, ip_flags, source_port, destination_port, tcp_flags, tcp_window_size, tcp_sequence, tcp_acknowledgement) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-)
-
 func WritePCAPProtobuf(cmd *cli.Cmd) {
 	cmd.Spec = "CAPTURE_HOST OUTPUT_FILE FILENAME..."
 	captureHostname := cmd.StringArg("CAPTURE_HOST", "", "Host the packets were captured from")
-	filenames := cmd.StringsArg("FILENAME", nil, "Pcap files to write")
+	_ = cmd.StringArg("OUTPUT_FILE", "", "Name of file to write netbrane shared protobufs to")
+	filenames := cmd.StringsArg("FILENAME", nil, "Pcap files to process")
 
 	cmd.Action = func() {
 		//TODO open outut file
@@ -126,7 +123,7 @@ func WritePCAPProtobuf(cmd *cli.Cmd) {
 					fmt.Printf("TRANSPORT LAYER: %s\n", transportLayer.LayerType())
 				}
 
-				fmt.Printf("captureHost:%s\nsrcMAC%s\ndstMAC:%s\nipProtocol:%d\nsrcIP:%s\ndstIP:%s\nipFlags:%d\nsrcPort:%d\ndstPort:%d\nwindowSize:%d\nseq:%d\nack:%d\n",
+				fmt.Printf("captureHost:%s\nsrcMAC:%s\ndstMAC:%s\nipProtocol:%d\nsrcIP:%s\ndstIP:%s\nipFlags:%d\nsrcPort:%d\ndstPort:%d\nwindowSize:%d\nseq:%d\nack:%d\n",
 					*captureHostname,
 					srcMAC.String(),
 					dstMAC.String(),
