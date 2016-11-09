@@ -9,7 +9,7 @@ pub mod pb;
 pub mod reader;
 
 use pb::netbrane::CaptureRecordUnion;
-use reader::{ProbeReader, ProbeResultReader};
+use reader::{DNSReader, ProbeReader, ProbeResultReader};
 
 use std::fs::File;
 use std::iter::Iterator;
@@ -18,10 +18,11 @@ const USAGE: &'static str = "
 Conversion tool to netbrane common format.
 
 Usage:
-    chimpanzee convert (--probe | --probe-result) <infile> [--outfile=<outfile>]
+    chimpanzee convert (--dns | --probe | --probe-result) <infile> [--outfile=<outfile>]
     chimpanzee (-h | --help)
 
 Options:
+    --dns                   Input file type is DNS.
     --outfile=<outfile>     Output file.
     --probe                 Input file type is probe.
     --probe_result          Input file type is probe result.
@@ -32,6 +33,7 @@ Options:
 struct Args {
     cmd_convert: bool,
     arg_infile: String,
+    flag_dns: bool,
     flag_outfile: Option<String>,
     flag_probe: bool,
     flag_probe_result: bool,
@@ -49,7 +51,9 @@ fn main() {
             Err(e) => panic!("{}", e),
         };
 
-        let iter: Box<Iterator<Item=CaptureRecordUnion>> = if args.flag_probe {
+        let iter: Box<Iterator<Item=CaptureRecordUnion>> = if args.flag_dns {
+            Box::new(DNSReader::new(&mut file))
+        } else if args.flag_probe {
             Box::new(ProbeReader::new(&mut file))
         } else if args.flag_probe_result {
             Box::new(ProbeResultReader::new(&mut file))
